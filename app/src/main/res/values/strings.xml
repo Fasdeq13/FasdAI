@@ -1,0 +1,51 @@
+<resources>
+    <string name="app_name">FasdAI</string>
+
+    <string name="onboarding_title">Подключи модель</string>
+    <string name="onboarding_subtitle">Введи ключ хотя бы одного провайдера. Ключ хранится только на этом устройстве.</string>
+    <string name="provider_anthropic">Anthropic Claude</string>
+    <string name="provider_openai">OpenAI</string>
+    <string name="provider_gemini">Google Gemini</string>
+    <string name="provider_deepseek">DeepSeek</string>
+    <string name="provider_custom">Свой OpenAI-совместимый</string>
+    <string name="api_key_hint">API ключ</string>
+    <string name="base_url_hint">Base URL</string>
+    <string name="save">Сохранить</string>
+    <string name="continue_btn">Продолжить</string>
+    <string name="checking_models">Проверяю доступные модели…</string>
+    <string name="no_models">Моделей не найдено</string>
+    <string name="pick_model">Выбери модель</string>
+
+    <string name="chat_hint">Напиши сообщение…</string>
+    <string name="attach">Прикрепить</string>
+    <string name="send">Отправить</string>
+    <string name="coding_mode">Кодинг-режим</string>
+    <string name="thinking_mode">Режим рассуждений</string>
+    <string name="compact_notice">Сжимаю историю чата…</string>
+    <string name="export_ready">Проект собран</string>
+    <string name="save_zip">Сохранить zip</string>
+
+    <string name="settings">Настройки</string>
+    <string name="accent_color">Акцентный цвет</string>
+    <string name="button_shape">Форма кнопок</string>
+    <string name="shape_sharp">Жёсткая</string>
+    <string name="shape_rounded">Скруглённая</string>
+    <string name="shape_pill">Капсула</string>
+    <string name="network_settings">Сеть</string>
+    <string name="proxy_host">Прокси хост</string>
+    <string name="proxy_port">Прокси порт</string>
+    <string name="custom_dns">Свой DNS</string>
+    <string name="providers">Провайдеры</string>
+
+    <string name="error_401">Неверный ключ (401)</string>
+    <string name="error_403">Доступ запрещён (403)</string>
+    <string name="error_404">Модель не найдена (404)</string>
+    <string name="error_429">Лимит запросов исчерпан (429)</string>
+    <string name="error_500">Сбой на сервере модели (500)</string>
+    <string name="error_502">Сервер модели недоступен (502)</string>
+    <string name="error_503">Сервер модели перегружен (503)</string>
+    <string name="error_timeout">Сервер не отвечает, таймаут</string>
+    <string name="error_network">Нет соединения с сетью</string>
+    <string name="error_unknown">Ошибка, код %1$s</string>
+    <string name="model_unavailable">Модель недоступна. %1$s</string>
+</resources>
