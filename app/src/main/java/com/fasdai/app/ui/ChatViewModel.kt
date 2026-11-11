@@ -20,9 +20,12 @@ import com.fasdai.app.util.parseCodeFiles
 import com.fasdai.app.util.zipCodeFiles
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -42,6 +45,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val app get() = getApplication<FasdAiApp>()
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
+
+    private var activeJob: Job? = null
+    private val activeCall = AtomicReference<okhttp3.Call?>(null)
+    private var currentChatId: String? = null
+
+    init {
+        viewModelScope.launch {
+            val existing = app.settings.currentChatId.first()
+            val id = existing ?: app.chatRepository.newChat().also { app.settings.setCurrentChatId(it) }
+            currentChatId = id
+            val loaded = app.chatRepository.loadMessages(id)
+            if (loaded.isNotEmpty()) {
+                _state.value = _state.value.copy(messages = loaded)
+            }
+        }
+    }
+
+    fun startNewChat() {
+        viewModelScope.launch {
+            val id = app.chatRepository.newChat()
+            app.settings.setCurrentChatId(id)
+            currentChatId = id
+            _state.value = _state.value.copy(messages = emptyList(), errorText = null, lastZip = null)
+        }
+    }
+
+    fun stopGeneration() {
+        activeCall.get()?.cancel()
+        activeJob?.cancel()
+        _state.value = _state.value.copy(isSending = false, isCompacting = false)
+    }
 
     fun selectModel(provider: Provider, model: String) {
         _state.value = _state.value.copy(selectedProvider = provider, selectedModel = model)
@@ -78,7 +112,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val newHistory = current.messages + userMessage
         _state.value = current.copy(messages = newHistory, isSending = true, errorText = null)
 
-        viewModelScope.launch {
+        activeJob = viewModelScope.launch {
             val client = app.clientFactory().clientFor(provider) ?: run {
                 _state.value = _state.value.copy(isSending = false, errorText = "Провайдер не настроен")
                 return@launch
@@ -93,9 +127,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     history = listOf(ChatMessage(Role.USER, buildCompactionPrompt(workingHistory))),
                     thinking = false,
                 )
-                val summaryOutcome = client.send(summaryRequest)
+                val summaryOutcome = client.send(summaryRequest) { call -> activeCall.set(call) }
                 if (summaryOutcome is ApiOutcome.Success) {
                     workingHistory = applyCompaction(workingHistory, summaryOutcome.result.text)
+                } else if (summaryOutcome is ApiOutcome.Cancelled) {
+                    _state.value = _state.value.copy(isSending = false, isCompacting = false)
+                    return@launch
                 }
                 _state.value = _state.value.copy(isCompacting = false)
             }
@@ -108,7 +145,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 history = workingHistory,
                 thinking = current.thinkingMode,
             )
-            when (val outcome = client.send(request)) {
+            when (val outcome = client.send(request) { call -> activeCall.set(call) }) {
+                is ApiOutcome.Cancelled -> {
+                    _state.value = _state.value.copy(isSending = false)
+                }
                 is ApiOutcome.Success -> {
                     val assistantMessage = ChatMessage(
                         role = Role.ASSISTANT,
@@ -130,6 +170,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         isSending = false,
                         lastZip = zipPath,
                     )
+                    currentChatId?.let { id ->
+                        app.chatRepository.saveMessage(id, userMessage)
+                        app.chatRepository.saveMessage(id, assistantMessage)
+                    }
                 }
                 is ApiOutcome.Failure -> {
                     _state.value = _state.value.copy(isSending = false, errorText = describeError(outcome.error))

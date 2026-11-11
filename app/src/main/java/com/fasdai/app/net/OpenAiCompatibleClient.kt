@@ -40,16 +40,33 @@ class OpenAiCompatibleClient(
         }.getOrElse { mapException(it) }
     }
 
-    override suspend fun send(request: ChatRequest): ApiOutcome = withContext(Dispatchers.IO) {
+    override suspend fun send(request: ChatRequest, onCall: (okhttp3.Call) -> Unit): ApiOutcome = withContext(Dispatchers.IO) {
         val messages = JSONArray()
         if (!request.systemPrompt.isNullOrBlank()) {
             messages.put(JSONObject().apply { put("role", "system"); put("content", request.systemPrompt) })
         }
         request.history.filter { it.role != Role.SYSTEM }.forEach { msg ->
+            val images = if (provider == Provider.DEEPSEEK) emptyList() else msg.attachments.filter { it.isImage && it.base64 != null }
+            val docsNote = encodeAttachmentsNote(msg.attachments.filterNot { it.isImage })
+            val content: Any = if (images.isEmpty()) {
+                msg.text + docsNote
+            } else {
+                JSONArray().apply {
+                    put(JSONObject().put("type", "text").put("text", msg.text + docsNote))
+                    images.forEach { img ->
+                        put(
+                            JSONObject().apply {
+                                put("type", "image_url")
+                                put("image_url", JSONObject().put("url", "data:${img.mimeType};base64,${img.base64}"))
+                            }
+                        )
+                    }
+                }
+            }
             messages.put(
                 JSONObject().apply {
                     put("role", if (msg.role == Role.USER) "user" else "assistant")
-                    put("content", msg.text + encodeAttachmentsNote(msg.attachments))
+                    put("content", content)
                 }
             )
         }
@@ -66,7 +83,9 @@ class OpenAiCompatibleClient(
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         runCatching {
-            http.newCall(httpRequest).execute().use { resp ->
+            val call = http.newCall(httpRequest)
+            onCall(call)
+            call.execute().use { resp ->
                 val bodyText = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@withContext ApiOutcome.Failure(ApiError.Http(resp.code, bodyText))
                 val json = JSONObject(bodyText)

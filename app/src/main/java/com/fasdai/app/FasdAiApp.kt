@@ -2,6 +2,8 @@ package com.fasdai.app
 
 import android.app.Application
 import com.fasdai.app.data.AppSettingsRepo
+import com.fasdai.app.data.ChatRepository
+import com.fasdai.app.data.FasdAiDatabase
 import com.fasdai.app.data.SecureKeyStore
 import com.fasdai.app.net.ClientFactory
 import com.fasdai.app.net.buildHttpClient
@@ -14,6 +16,8 @@ class FasdAiApp : Application() {
         private set
     lateinit var settings: AppSettingsRepo
         private set
+    lateinit var chatRepository: ChatRepository
+        private set
 
     @Volatile
     private var cachedHttp: OkHttpClient? = null
@@ -22,6 +26,7 @@ class FasdAiApp : Application() {
         super.onCreate()
         keyStore = SecureKeyStore(this)
         settings = AppSettingsRepo(this)
+        chatRepository = ChatRepository(FasdAiDatabase.get(this).chatDao())
     }
 
     suspend fun rebuildHttpClient() {

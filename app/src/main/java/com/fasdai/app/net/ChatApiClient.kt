@@ -21,6 +21,7 @@ data class ChatResult(
 sealed class ApiOutcome {
     data class Success(val result: ChatResult) : ApiOutcome()
     data class Failure(val error: ApiError) : ApiOutcome()
+    object Cancelled : ApiOutcome()
 }
 
 sealed class ModelsOutcome {
@@ -31,7 +32,7 @@ sealed class ModelsOutcome {
 interface ChatApiClient {
     val provider: Provider
     suspend fun listModels(): ModelsOutcome
-    suspend fun send(request: ChatRequest): ApiOutcome
+    suspend fun send(request: ChatRequest, onCall: (okhttp3.Call) -> Unit = {}): ApiOutcome
 }
 
 fun encodeAttachmentsNote(attachments: List<Attachment>): String {

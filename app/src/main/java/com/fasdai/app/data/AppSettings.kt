@@ -20,6 +20,7 @@ object SettingsKeys {
     val THINKING_MODE = booleanPreferencesKey("thinking_mode")
     val SELECTED_PROVIDER = stringPreferencesKey("selected_provider")
     val SELECTED_MODEL = stringPreferencesKey("selected_model")
+    val CURRENT_CHAT_ID = stringPreferencesKey("current_chat_id")
 }
 
 const val DEFAULT_ACCENT = 0xFF5B8CFF.toInt()
@@ -34,6 +35,11 @@ class AppSettingsRepo(private val context: Context) {
     val thinkingMode: Flow<Boolean> = context.settingsStore.data.map { it[SettingsKeys.THINKING_MODE] ?: false }
     val selectedProvider: Flow<String?> = context.settingsStore.data.map { it[SettingsKeys.SELECTED_PROVIDER] }
     val selectedModel: Flow<String?> = context.settingsStore.data.map { it[SettingsKeys.SELECTED_MODEL] }
+    val currentChatId: Flow<String?> = context.settingsStore.data.map { it[SettingsKeys.CURRENT_CHAT_ID] }
+
+    suspend fun setCurrentChatId(id: String) {
+        context.settingsStore.edit { it[SettingsKeys.CURRENT_CHAT_ID] = id }
+    }
 
     suspend fun setAccentColor(color: Int) {
         context.settingsStore.edit { it[SettingsKeys.ACCENT_COLOR] = color }

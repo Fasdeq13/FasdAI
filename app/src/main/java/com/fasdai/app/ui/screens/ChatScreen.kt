@@ -17,8 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -44,19 +46,30 @@ import com.fasdai.app.data.Attachment
 import com.fasdai.app.data.ChatMessage
 import com.fasdai.app.data.Role
 import com.fasdai.app.ui.ChatViewModel
+import androidx.compose.runtime.rememberCoroutineScope
+import com.fasdai.app.util.encodeAttachment
+import com.fasdai.app.util.highlightCode
 import com.fasdai.app.util.splitMarkdownBlocks
+import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
 fun ChatScreen(viewModel: ChatViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
     var pendingAttachments by remember { mutableStateOf(listOf<Attachment>()) }
+    var encoding by remember { mutableStateOf(false) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            pendingAttachments = pendingAttachments + Attachment(uri.toString(), "application/octet-stream", uri.lastPathSegment ?: "файл")
+            encoding = true
+            scope.launch {
+                val attachment = encodeAttachment(context, uri)
+                pendingAttachments = pendingAttachments + attachment
+                encoding = false
+            }
         }
     }
 
@@ -74,6 +87,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 Text("Рассуждения", modifier = Modifier.padding(end = 4.dp))
                 Switch(checked = state.thinkingMode, onCheckedChange = viewModel::toggleThinkingMode)
             }
+            IconButton(onClick = { viewModel.startNewChat() }) {
+                Icon(Icons.Default.Add, contentDescription = "Новый чат")
+            }
         }
 
         if (state.isCompacting) {
@@ -85,7 +101,14 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 MessageBubble(message)
             }
             if (state.isSending) {
-                item { CircularProgressIndicator(modifier = Modifier.padding(8.dp)) }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                        IconButton(onClick = { viewModel.stopGeneration() }) {
+                            Icon(Icons.Default.Stop, contentDescription = "Остановить")
+                        }
+                    }
+                }
             }
         }
 
@@ -106,6 +129,13 @@ fun ChatScreen(viewModel: ChatViewModel) {
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+            }
+        }
+
+        if (pendingAttachments.isNotEmpty() || encoding) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (encoding) Text("читаю файл…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                pendingAttachments.forEach { Text(it.displayName, color = MaterialTheme.colorScheme.primary) }
             }
         }
 
@@ -178,10 +208,9 @@ private fun MessageBubble(message: ChatMessage) {
                             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color(0xFF0A0A0D)),
                         ) {
                             Text(
-                                block.text,
+                                highlightCode(block.text, block.language),
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(10.dp),
-                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     } else {

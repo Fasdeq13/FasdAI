@@ -43,13 +43,37 @@ class AnthropicClient(
         }.getOrElse { mapException(it) }
     }
 
-    override suspend fun send(request: ChatRequest): ApiOutcome = withContext(Dispatchers.IO) {
+    override suspend fun send(request: ChatRequest, onCall: (okhttp3.Call) -> Unit): ApiOutcome = withContext(Dispatchers.IO) {
         val messages = JSONArray()
         request.history.filter { it.role != Role.SYSTEM }.forEach { msg ->
+            val images = msg.attachments.filter { it.isImage && it.base64 != null }
+            val docsNote = encodeAttachmentsNote(msg.attachments.filterNot { it.isImage })
+            val content: Any = if (images.isEmpty()) {
+                msg.text + docsNote
+            } else {
+                JSONArray().apply {
+                    put(JSONObject().put("type", "text").put("text", msg.text + docsNote))
+                    images.forEach { img ->
+                        put(
+                            JSONObject().apply {
+                                put("type", "image")
+                                put(
+                                    "source",
+                                    JSONObject().apply {
+                                        put("type", "base64")
+                                        put("media_type", img.mimeType)
+                                        put("data", img.base64)
+                                    },
+                                )
+                            }
+                        )
+                    }
+                }
+            }
             messages.put(
                 JSONObject().apply {
                     put("role", if (msg.role == Role.USER) "user" else "assistant")
-                    put("content", msg.text + encodeAttachmentsNote(msg.attachments))
+                    put("content", content)
                 }
             )
         }
@@ -66,7 +90,9 @@ class AnthropicClient(
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         runCatching {
-            http.newCall(httpRequest).execute().use { resp ->
+            val call = http.newCall(httpRequest)
+            onCall(call)
+            call.execute().use { resp ->
                 val bodyText = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@withContext ApiOutcome.Failure(ApiError.Http(resp.code, bodyText))
                 val json = JSONObject(bodyText)
@@ -91,8 +117,9 @@ internal fun mapException(e: Throwable): ModelsOutcome = when (e) {
     else -> ModelsOutcome.Failure(ApiError.Unexpected(e.message.orEmpty()))
 }
 
-internal fun mapExceptionChat(e: Throwable): ApiOutcome = when (e) {
-    is SocketTimeoutException -> ApiOutcome.Failure(ApiError.Timeout(e.message.orEmpty()))
-    is IOException -> ApiOutcome.Failure(ApiError.Network(e.message.orEmpty()))
+internal fun mapExceptionChat(e: Throwable): ApiOutcome = when {
+    e is java.io.InterruptedIOException && e.message?.contains("Canceled", ignoreCase = true) == true -> ApiOutcome.Cancelled
+    e is SocketTimeoutException -> ApiOutcome.Failure(ApiError.Timeout(e.message.orEmpty()))
+    e is IOException -> ApiOutcome.Failure(ApiError.Network(e.message.orEmpty()))
     else -> ApiOutcome.Failure(ApiError.Unexpected(e.message.orEmpty()))
 }

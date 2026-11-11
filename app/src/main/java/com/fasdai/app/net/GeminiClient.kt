@@ -44,13 +44,24 @@ class GeminiClient(
         }.getOrElse { mapException(it) }
     }
 
-    override suspend fun send(request: ChatRequest): ApiOutcome = withContext(Dispatchers.IO) {
+    override suspend fun send(request: ChatRequest, onCall: (okhttp3.Call) -> Unit): ApiOutcome = withContext(Dispatchers.IO) {
         val contents = JSONArray()
         request.history.filter { it.role != Role.SYSTEM }.forEach { msg ->
+            val images = msg.attachments.filter { it.isImage && it.base64 != null }
+            val docsNote = encodeAttachmentsNote(msg.attachments.filterNot { it.isImage })
+            val parts = JSONArray().put(JSONObject().put("text", msg.text + docsNote))
+            images.forEach { img ->
+                parts.put(
+                    JSONObject().put(
+                        "inline_data",
+                        JSONObject().put("mime_type", img.mimeType).put("data", img.base64),
+                    )
+                )
+            }
             contents.put(
                 JSONObject().apply {
                     put("role", if (msg.role == Role.USER) "user" else "model")
-                    put("parts", JSONArray().put(JSONObject().put("text", msg.text + encodeAttachmentsNote(msg.attachments))))
+                    put("parts", parts)
                 }
             )
         }
@@ -68,7 +79,9 @@ class GeminiClient(
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         runCatching {
-            http.newCall(httpRequest).execute().use { resp ->
+            val call = http.newCall(httpRequest)
+            onCall(call)
+            call.execute().use { resp ->
                 val bodyText = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@withContext ApiOutcome.Failure(ApiError.Http(resp.code, bodyText))
                 val json = JSONObject(bodyText)

@@ -32,4 +32,7 @@ data class Attachment(
     val uri: String,
     val mimeType: String,
     val displayName: String,
-)
+    val base64: String? = null,
+) {
+    val isImage: Boolean get() = mimeType.startsWith("image/")
+}
